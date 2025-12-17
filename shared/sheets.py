@@ -10,8 +10,15 @@ from gspread import Spreadsheet, Worksheet
 from .config import config, is_cloud_environment
 from .logging_config import logger
 
+import google.auth
+creds, project = google.auth.default(scopes=[
+    'https://www.googleapis.com/auth/spreadsheets',
+    'https://www.googleapis.com/auth/drive'
+])
+_client = gspread.authorize(creds)
 
-_client: Optional[gspread.Client] = None
+
+#_client: Optional[gspread.Client] = None
 
 
 def get_sheets_client() -> gspread.Client:
@@ -215,17 +222,10 @@ def save_report_to_sheet(
 
 
 def test_sheets() -> bool:
-    """
-    Test Google Sheets connectivity.
-    
-    Returns:
-        True if test successful
-    """
     try:
         client = get_sheets_client()
-        # Try to list spreadsheets (minimal operation)
-        spreadsheets = client.list_spreadsheet_files(limit=1)
-        logger.info(f"Google Sheets connection test: SUCCESS (found {len(spreadsheets)} files)")
+        client.list_spreadsheet_files()  # Removed: limit=1
+        logger.info("Google Sheets connection test: SUCCESS")
         return True
     except Exception as e:
         logger.error(f"Google Sheets connection test: FAILED - {e}")

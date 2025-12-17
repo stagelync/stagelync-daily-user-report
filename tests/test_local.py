@@ -57,13 +57,13 @@ def test_config() -> bool:
         ("GCP Project ID", config.gcp_project_id, "stagelync-daily-user-reports"),
         ("GCP Region", config.gcp_region, "asia-northeast1"),
         ("MySQL Host", config.mysql_host, None),
-        ("MySQL Port", config.mysql_port, 3306),
+        ("MySQL Port", config.mysql_port, 25060),
         ("MySQL User", config.mysql_user, None),
         ("MySQL Database", config.mysql_database, None),
         ("SMTP Host", config.smtp_host, "smtp.gmail.com"),
         ("SMTP Port", config.smtp_port, 587),
         ("SMTP User", config.smtp_user, None),
-        ("Email To", config.email_to, "laci@stagelync.com"),
+        ("Email To", config.email_to, "bartosladi@gmail.com"),
     ]
     
     for name, value, expected in tests:
@@ -206,17 +206,9 @@ def test_sheets(create: bool = False) -> bool:
     
     all_passed = True
     
-    # Test 1: Credentials
-    creds_file = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
-    if creds_file:
-        success = os.path.exists(creds_file)
-        print_result("Service Account File", success, creds_file if success else "File not found")
-        if not success:
-            all_passed = False
-    else:
-        print_result("Service Account File", False, "GOOGLE_APPLICATION_CREDENTIALS not set")
-        print(f"  {Colors.YELLOW}Tip: Download service account JSON and set GOOGLE_APPLICATION_CREDENTIALS{Colors.RESET}")
-        return False
+    # Test 1: Check gcloud auth
+    print("  Checking authentication...")
+    print(f"  {Colors.YELLOW}(Using: gcloud auth application-default login){Colors.RESET}")
     
     # Test 2: Authentication
     try:
@@ -224,9 +216,13 @@ def test_sheets(create: bool = False) -> bool:
         print_result("Authentication", success)
         if not success:
             all_passed = False
+            print(f"\n  {Colors.YELLOW}Tip: Run 'gcloud auth application-default login' to authenticate{Colors.RESET}")
+            return all_passed
     except Exception as e:
         print_result("Authentication", False, str(e))
+        print(f"\n  {Colors.YELLOW}Tip: Run 'gcloud auth application-default login' to authenticate{Colors.RESET}")
         all_passed = False
+        return all_passed
     
     # Test 3: Create test sheet (optional)
     if create and all_passed:
