@@ -1,255 +1,400 @@
-# Daily New Users Report - Google Cloud Deployment
+# StageLync Daily Reports
 
-A serverless solution using Cloud Run, Cloud Scheduler, and Cloud Monitoring.
+Automated reports running on Google Cloud Run with scheduling, monitoring, and manual triggers.
 
 ## Architecture
 
 ```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│ Cloud Scheduler │────▶│   Cloud Run     │────▶│     MySQL       │
-│   (8 AM daily)  │     │  (Flask app)    │     │   Database      │
-└─────────────────┘     └────────┬────────┘     └─────────────────┘
-                                 │
-                    ┌────────────┼────────────┐
-                    ▼            ▼            ▼
-            ┌───────────┐ ┌───────────┐ ┌───────────┐
-            │   Email   │ │  Google   │ │   Cloud   │
-            │  (SMTP)   │ │  Sheets   │ │  Logging  │
-            └───────────┘ └───────────┘ └───────────┘
-                                              │
-                                              ▼
-                                        ┌───────────┐
-                                        │   Cloud   │
-                                        │ Monitoring│
-                                        │ (Alerts)  │
-                                        └───────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│               stagelync-daily-user-reports                      │
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │                    Cloud Scheduler                       │   │
+│  │            (8 AM Tokyo, configurable)                   │   │
+│  └─────────────────────────┬───────────────────────────────┘   │
+│                            │                                    │
+│       ┌────────────────────┼────────────────────┐              │
+│       ▼                    ▼                    ▼              │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐        │
+│  │ New Users   │    │Subscriptions│    │  (Future)   │        │
+│  │   Report    │    │   Report    │    │   Reports   │        │
+│  └──────┬──────┘    └──────┬──────┘    └──────┬──────┘        │
+│         │                  │                  │                │
+│         └──────────────────┴──────────────────┘                │
+│                            │                                    │
+│                    shared/ utilities                           │
+│                   (db, email, sheets)                          │
+└────────────────────────────┼────────────────────────────────────┘
+                             │
+                  ┌──────────┴──────────┐
+                  ▼                     ▼
+         bartoss-project-vpn      Cloud Logging
+            (Static IP)           & Monitoring
+                  │
+    ┌─────────────┼─────────────┐
+    ▼             ▼             ▼
+┌───────┐   ┌─────────┐   ┌─────────┐
+│ MySQL │   │  SMTP   │   │ Google  │
+│       │   │ (Gmail) │   │ Sheets  │
+└───────┘   └─────────┘   └─────────┘
 ```
 
-## Files
+## Repository Structure
 
-| File | Description |
-|------|-------------|
-| `main.py` | Flask application with Cloud Logging integration |
-| `Dockerfile` | Container definition for Cloud Run |
-| `requirements.txt` | Python dependencies |
-| `deploy.sh` | One-command deployment script |
-
-## Quick Deployment
-
-### 1. Edit Configuration
-
-Open `deploy.sh` and update:
-
-```bash
-PROJECT_ID="your-project-id"
-REGION="asia-northeast1"  # Tokyo
-
-# MySQL
-MYSQL_HOST="your-mysql-host"
-MYSQL_USER="your-mysql-user"
-MYSQL_PASSWORD="your-mysql-password"
-MYSQL_DATABASE="your-database"
-
-# SMTP
-SMTP_USER="your-email@gmail.com"
-SMTP_PASSWORD="your-app-password"
+```
+stagelync-daily-user-reports/
+├── .env.example          # Configuration template
+├── .gitignore            # Git ignore rules
+├── requirements.txt      # Local dev dependencies
+├── setup.sh              # Project setup script
+├── status.sh             # Check deployment status
+├── trigger.sh            # Manual trigger script
+├── README.md
+│
+├── shared/               # Reusable utilities
+│   ├── __init__.py
+│   ├── config.py         # Configuration loading
+│   ├── db.py             # Database utilities
+│   ├── email_utils.py    # Email utilities
+│   ├── sheets.py         # Google Sheets utilities
+│   └── logging_config.py # Cloud Logging setup
+│
+├── tests/
+│   └── test_local.py     # Local testing suite
+│
+└── reports/
+    ├── new-users/        # New users report
+    │   ├── main.py
+    │   ├── deploy.sh
+    │   ├── Dockerfile
+    │   └── requirements.txt
+    │
+    └── subscriptions/    # Subscriptions report (template)
+        ├── main.py
+        ├── deploy.sh
+        ├── Dockerfile
+        └── requirements.txt
 ```
 
-### 2. Deploy
+## Quick Start
+
+### Prerequisites
+
+1. **VPN must be set up** in `bartoss-project-vpn`
+2. **gcloud CLI** installed and authenticated
+3. **Python 3.11+** for local testing
+
+### 1. Clone and Configure
 
 ```bash
-chmod +x deploy.sh
+git clone git@github.com:YOUR-USERNAME/stagelync-daily-user-reports.git
+cd stagelync-daily-user-reports
+
+# Create configuration
+cp .env.example .env
+nano .env  # Fill in your values
+```
+
+### 2. Local Testing
+
+```bash
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run all tests
+python -m tests.test_local
+
+# Or test individually
+python -m tests.test_local db          # Database only
+python -m tests.test_local email       # Email only
+python -m tests.test_local sheets      # Google Sheets only
+python -m tests.test_local email --send    # Actually send test email
+python -m tests.test_local sheets --create # Create test spreadsheet
+```
+
+### 3. Deploy
+
+```bash
+# Set up project (creates secrets)
+./setup.sh
+
+# Deploy new users report
+cd reports/new-users
 ./deploy.sh
 ```
 
-This single command:
-- Enables all required APIs
-- Creates secrets in Secret Manager
-- Builds and deploys to Cloud Run
-- Sets up Cloud Scheduler for 8 AM Tokyo time
-- Creates monitoring alert policy
-
-### 3. Test Manually
+### 4. Test Deployment
 
 ```bash
-gcloud scheduler jobs run daily-users-report-trigger --location asia-northeast1
+# Via Cloud Scheduler
+gcloud scheduler jobs run new-users-report-daily --location asia-northeast1
+
+# Or direct trigger
+./trigger.sh new-users
 ```
 
-## Cloud Monitoring Setup
+## Configuration
+
+### .env File
+
+```bash
+# GCP
+GCP_PROJECT_ID="stagelync-daily-user-reports"
+GCP_REGION="asia-northeast1"
+
+# VPN
+VPN_PROJECT_ID="bartoss-project-vpn"
+VPC_CONNECTOR_NAME="bartoss-connector"
+
+# MySQL
+MYSQL_HOST="your-mysql-host"
+MYSQL_PORT="3306"
+MYSQL_USER="your-user"
+MYSQL_PASSWORD="your-password"
+MYSQL_DATABASE="your-database"
+
+# SMTP
+SMTP_HOST="smtp.gmail.com"
+SMTP_PORT="587"
+SMTP_USER="your-email@gmail.com"
+SMTP_PASSWORD="your-app-password"
+EMAIL_TO="laci@stagelync.com"
+
+# Google Sheets
+GOOGLE_APPLICATION_CREDENTIALS="./service-account.json"
+SHEET_NEW_USERS="StageLync - New Users Report"
+
+# Schedule
+SCHEDULE_NEW_USERS="0 8 * * *"
+TIMEZONE="Asia/Tokyo"
+```
+
+### Google Sheets Setup (Local Testing)
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com)
+2. Create a Service Account
+3. Download JSON key as `service-account.json`
+4. Set `GOOGLE_APPLICATION_CREDENTIALS=./service-account.json`
+
+## Shared Utilities
+
+### Database (`shared/db`)
+
+```python
+from shared import db
+
+# Execute query
+users = db.execute_query("SELECT * FROM users WHERE active = 1")
+
+# Get single value
+count = db.execute_scalar("SELECT COUNT(*) FROM users")
+
+# With dictionary results
+users = db.execute_query("SELECT * FROM users", dictionary=True)
+# Returns: [{'id': 1, 'name': 'John'}, ...]
+
+# Test connection
+if db.test_connection():
+    print("Connected!")
+```
+
+### Email (`shared/email_utils`)
+
+```python
+from shared import email_utils
+
+# Send simple email
+email_utils.send_email(
+    to="recipient@example.com",
+    subject="Hello",
+    body="Email body"
+)
+
+# Send report email
+email_utils.send_report_email(
+    report_name="New Users",
+    date="2024-01-15",
+    items=["user1", "user2", "user3"]
+)
+
+# Test email configuration
+email_utils.test_email()
+```
+
+### Google Sheets (`shared/sheets`)
+
+```python
+from shared import sheets
+
+# Get or create spreadsheet
+spreadsheet = sheets.get_or_create_spreadsheet(
+    "My Report",
+    share_with="laci@stagelync.com"
+)
+
+# Add headers
+worksheet = spreadsheet.sheet1
+sheets.ensure_headers(worksheet, ["Date", "Name", "Value"])
+
+# Append rows
+sheets.append_row(worksheet, ["2024-01-15", "Test", 123])
+sheets.append_rows(worksheet, [
+    ["2024-01-15", "Row 1", 100],
+    ["2024-01-15", "Row 2", 200],
+])
+
+# Test connection
+sheets.test_sheets()
+```
+
+## Manual Triggers
+
+### Via Script
+
+```bash
+# Trigger specific report
+./trigger.sh new-users
+./trigger.sh subscriptions
+
+# Trigger all reports
+./trigger.sh all
+
+# Use Cloud Scheduler instead of direct HTTP
+./trigger.sh new-users --scheduler
+```
+
+### Via gcloud
+
+```bash
+# Trigger via scheduler
+gcloud scheduler jobs run new-users-report-daily --location asia-northeast1
+
+# Direct HTTP call
+SERVICE_URL=$(gcloud run services describe new-users-report --region asia-northeast1 --format 'value(status.url)')
+curl -X POST -H "Authorization: Bearer $(gcloud auth print-identity-token)" $SERVICE_URL/run
+```
+
+### Endpoints
+
+Each report exposes these endpoints:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/` | POST | Scheduled trigger (Cloud Scheduler) |
+| `/run` | POST | Manual trigger |
+| `/health` | GET | Health check |
+| `/status` | GET | Last run info |
+| `/test/db` | GET | Test database connection |
+
+## Monitoring
 
 ### View Logs
 
-**Cloud Console:**
-1. Go to Cloud Run → `daily-users-report` → Logs
-
-**CLI:**
 ```bash
-gcloud logging read 'resource.type=cloud_run_revision AND resource.labels.service_name=daily-users-report' --limit 50
+# All reports
+gcloud logging read 'resource.type=cloud_run_revision' --limit 50
+
+# Specific report
+gcloud logging read 'resource.labels.service_name=new-users-report' --limit 20
+
+# Errors only
+gcloud logging read 'resource.type=cloud_run_revision severity>=ERROR' --limit 10
 ```
 
-### Custom Log Queries
+### Cloud Console
 
-Find errors:
-```
-resource.type="cloud_run_revision"
-resource.labels.service_name="daily-users-report"
-severity>=ERROR
-```
+- **Logs**: https://console.cloud.google.com/logs?project=stagelync-daily-user-reports
+- **Monitoring**: https://console.cloud.google.com/monitoring?project=stagelync-daily-user-reports
+- **Cloud Run**: https://console.cloud.google.com/run?project=stagelync-daily-user-reports
 
-Track executions:
-```
-resource.type="cloud_run_revision"
-resource.labels.service_name="daily-users-report"
-textPayload:"Report completed successfully"
-```
+### Alerts
 
-### Set Up Alert Notifications
+Deploy scripts automatically create alert policies for failures. To add notifications:
 
-1. **Go to Cloud Monitoring → Alerting → Notification Channels**
+1. Go to Cloud Monitoring → Alerting
+2. Edit the alert policy
+3. Add notification channel (email, Slack, etc.)
 
-2. **Add Email Channel:**
-   - Click "Add New" → Email
-   - Enter: `laci@stagelync.com`
-   - Verify the email
-
-3. **Update Alert Policy:**
-   - Go to Alerting → Policies
-   - Find "Daily Users Report - Execution Failures"
-   - Edit → Add notification channel
-
-### Create Custom Dashboard
-
-1. Go to Cloud Monitoring → Dashboards → Create Dashboard
-
-2. Add these widgets:
-
-**Execution Count:**
-```
-resource.type="cloud_run_revision"
-metric.type="run.googleapis.com/request_count"
-resource.labels.service_name="daily-users-report"
-```
-
-**Latency:**
-```
-resource.type="cloud_run_revision"
-metric.type="run.googleapis.com/request_latencies"
-resource.labels.service_name="daily-users-report"
-```
-
-**Error Rate:**
-```
-resource.type="cloud_run_revision"
-metric.type="run.googleapis.com/request_count"
-resource.labels.service_name="daily-users-report"
-metric.labels.response_code_class!="2xx"
-```
-
-## MySQL Connectivity Options
-
-### Option A: Public MySQL (with SSL)
-
-If your MySQL is publicly accessible, ensure:
-1. SSL is enabled
-2. Firewall allows Cloud Run IPs (or use 0.0.0.0/0 with strong credentials)
-
-### Option B: Cloud SQL (Recommended)
-
-For Cloud SQL, add VPC connector:
+## Adding New Reports
 
 ```bash
-# Create VPC connector
-gcloud compute networks vpc-access connectors create cloudrun-connector \
-    --region asia-northeast1 \
-    --network default \
-    --range 10.8.0.0/28
+# 1. Create report directory
+mkdir reports/my-new-report
+cd reports/my-new-report
 
-# Update Cloud Run with connector
-gcloud run services update daily-users-report \
-    --region asia-northeast1 \
-    --vpc-connector cloudrun-connector \
-    --set-env-vars "MYSQL_HOST=/cloudsql/PROJECT:REGION:INSTANCE"
+# 2. Copy from template
+cp ../new-users/main.py .
+cp ../new-users/deploy.sh .
+cp ../new-users/Dockerfile .
+cp ../new-users/requirements.txt .
+
+# 3. Edit main.py
+#    - Change REPORT_NAME
+#    - Modify get_data() query
+#    - Update email/sheet format
+
+# 4. Edit deploy.sh
+#    - Change SERVICE_NAME
+#    - Change SCHEDULER_NAME
+#    - Update SCHEDULE if needed
+
+# 5. Deploy
+./deploy.sh
 ```
 
-### Option C: Private MySQL via Cloud VPN
+## Cost
 
-Set up Cloud VPN to your on-premise or other cloud MySQL.
+| Component | Monthly Cost |
+|-----------|-------------|
+| Cloud Run (per report) | ~$0.00 (free tier) |
+| Cloud Scheduler (per job) | $0.10 |
+| Secret Manager | ~$0.00 |
+| Cloud Logging | ~$0.00 (free tier) |
+| **Per Report** | **~$0.10** |
 
-## Cost Estimate
-
-For once-daily execution:
-
-| Service | Monthly Cost |
-|---------|-------------|
-| Cloud Run | ~$0.00 (free tier covers this) |
-| Cloud Scheduler | $0.10 (1 job) |
-| Secret Manager | ~$0.00 (6 secrets, minimal access) |
-| Cloud Logging | ~$0.00 (minimal logs) |
-| **Total** | **~$0.10/month** |
+VPN costs (~$1-3/month) are in `bartoss-project-vpn`.
 
 ## Troubleshooting
 
-### Check Scheduler Status
+### Local Tests Failing
 
 ```bash
-gcloud scheduler jobs describe daily-users-report-trigger --location asia-northeast1
+# Check configuration
+python -m tests.test_local config
+
+# Test components individually
+python -m tests.test_local db
+python -m tests.test_local email
+python -m tests.test_local sheets
 ```
 
-### View Recent Executions
+### Deployment Issues
 
 ```bash
-gcloud logging read 'resource.type="cloud_scheduler_job"' --limit 10
+# Check VPN access
+gcloud compute networks vpc-access connectors describe bartoss-connector \
+    --project=bartoss-project-vpn --region=asia-northeast1
+
+# Check secrets exist
+gcloud secrets list
+
+# View deployment logs
+gcloud logging read 'resource.type=cloud_run_revision severity>=WARNING' --limit 20
 ```
 
-### Test Cloud Run Directly
+### Report Not Running
 
 ```bash
-# Get service URL
-URL=$(gcloud run services describe daily-users-report --region asia-northeast1 --format 'value(status.url)')
+# Check scheduler status
+gcloud scheduler jobs describe new-users-report-daily --location asia-northeast1
 
-# Get identity token
-TOKEN=$(gcloud auth print-identity-token)
+# Check last execution
+./status.sh
 
-# Call the service
-curl -X POST -H "Authorization: Bearer $TOKEN" $URL
-```
-
-### Common Issues
-
-**"Permission denied" on secrets:**
-```bash
-# Re-grant permissions
-SA_EMAIL="YOUR-PROJECT-NUMBER-compute@developer.gserviceaccount.com"
-gcloud secrets add-iam-policy-binding mysql-password \
-    --member="serviceAccount:$SA_EMAIL" \
-    --role="roles/secretmanager.secretAccessor"
-```
-
-**MySQL connection timeout:**
-- Check if MySQL allows external connections
-- Consider using Cloud SQL with private IP
-- Increase Cloud Run timeout if needed
-
-**Google Sheets "not found":**
-- The service account needs access to the sheet
-- Or let the script create a new one (it will share with laci@stagelync.com)
-
-## Local Development
-
-```bash
-# Set environment variables
-export GCP_PROJECT_ID="your-project"
-export MYSQL_HOST="localhost"
-export MYSQL_USER="root"
-export MYSQL_PASSWORD="password"
-export MYSQL_DATABASE="test"
-export SMTP_USER="your@gmail.com"
-export SMTP_PASSWORD="app-password"
-
-# Run locally
-pip install -r requirements.txt
-python main.py
-
-# Test
-curl -X POST http://localhost:8080/
+# Manual trigger for debugging
+./trigger.sh new-users
 ```

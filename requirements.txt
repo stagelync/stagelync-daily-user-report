@@ -1,7 +1,21 @@
-flask>=3.0.0
-gunicorn>=21.0.0
+# =============================================================================
+# StageLync Reports - Local Development Dependencies
+# =============================================================================
+
+# Database
 mysql-connector-python>=8.0.0
-gspread>=5.0.0
-google-auth>=2.0.0
+
+# Google Cloud (for local testing with service account)
 google-cloud-logging>=3.0.0
 google-cloud-secret-manager>=2.0.0
+google-auth>=2.0.0
+gspread>=5.0.0
+
+# Web framework (for local server testing)
+flask>=3.0.0
+
+# Utilities
+python-dotenv>=1.0.0
+
+# Testing (optional)
+pytest>=7.0.0

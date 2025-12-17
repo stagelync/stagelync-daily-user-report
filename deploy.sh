@@ -9,20 +9,20 @@ set -e
 # -----------------------------------------------------------------------------
 # CONFIGURATION - Edit these values
 # -----------------------------------------------------------------------------
-PROJECT_ID="your-project-id"
+PROJECT_ID="stagelync-dev-opensearch"
 REGION="asia-northeast1"  # Tokyo
 SERVICE_NAME="daily-users-report"
 SCHEDULER_NAME="daily-users-report-trigger"
 
 # MySQL Configuration (will be stored in Secret Manager)
-MYSQL_HOST="your-mysql-host"
-MYSQL_USER="your-mysql-user"
-MYSQL_PASSWORD="your-mysql-password"
-MYSQL_DATABASE="your-database"
+MYSQL_HOST="circustalk-do-user-3484213-0.b.db.ondigitalocean.com"
+MYSQL_USER="laci"
+
+MYSQL_DATABASE="defaultdb"
 
 # SMTP Configuration (will be stored in Secret Manager)
-SMTP_USER="your-email@gmail.com"
-SMTP_PASSWORD="your-app-password"
+SMTP_USER="laci@stagelync.com"
+
 
 # Email recipient
 EMAIL_TO="laci@stagelync.com"
