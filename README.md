@@ -116,6 +116,25 @@ python -m tests.test_local email --send    # Actually send test email
 python -m tests.test_local sheets --create # Create test spreadsheet
 ```
 
+### 3. Run Reports Locally
+
+```bash
+# Run new users report
+python run.py new-users
+
+# Preview without sending (dry run)
+python run.py new-users --dry-run
+
+# Only send email (skip sheets)
+python run.py new-users --email-only
+
+# Only update sheets (skip email)
+python run.py new-users --sheets-only
+
+# Run subscriptions report
+python run.py subscriptions
+```
+
 ### 3. Deploy
 
 ```bash
@@ -175,10 +194,16 @@ TIMEZONE="Asia/Tokyo"
 
 ### Google Sheets Setup (Local Testing)
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com)
-2. Create a Service Account
-3. Download JSON key as `service-account.json`
-4. Set `GOOGLE_APPLICATION_CREDENTIALS=./service-account.json`
+Run this command once to authenticate with required scopes:
+
+```bash
+gcloud auth application-default login \
+  --scopes='https://www.googleapis.com/auth/spreadsheets,https://www.googleapis.com/auth/drive,https://www.googleapis.com/auth/cloud-platform'
+```
+
+This opens a browser to authenticate with your Google account. The credentials are stored locally and used automatically by the scripts.
+
+**Note:** Make sure your Google account has access to create/edit Google Sheets.
 
 ## Shared Utilities
 
@@ -207,9 +232,23 @@ if db.test_connection():
 ```python
 from shared import email_utils
 
-# Send simple email
+# Send to single recipient
 email_utils.send_email(
     to="recipient@example.com",
+    subject="Hello",
+    body="Email body"
+)
+
+# Send to multiple recipients (comma-separated string)
+email_utils.send_email(
+    to="laci@stagelync.com,team@stagelync.com,reports@bartoss.com",
+    subject="Hello",
+    body="Email body"
+)
+
+# Send to multiple recipients (list)
+email_utils.send_email(
+    to=["laci@stagelync.com", "team@stagelync.com"],
     subject="Hello",
     body="Email body"
 )

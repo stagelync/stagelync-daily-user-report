@@ -1,30 +1,31 @@
 """
 Google Sheets utilities for StageLync Reports.
 Provides spreadsheet creation, reading, and writing helpers.
+
+Authentication:
+- Local: Uses `gcloud auth application-default login`
+- Cloud Run: Uses default service account credentials
 """
 
 from typing import Any, Optional
 import gspread
 from gspread import Spreadsheet, Worksheet
 
-from .config import config, is_cloud_environment
+from .config import is_cloud_environment
 from .logging_config import logger
 
-import google.auth
-creds, project = google.auth.default(scopes=[
-    'https://www.googleapis.com/auth/spreadsheets',
-    'https://www.googleapis.com/auth/drive'
-])
-_client = gspread.authorize(creds)
 
-
-#_client: Optional[gspread.Client] = None
+_client: Optional[gspread.Client] = None
 
 
 def get_sheets_client() -> gspread.Client:
     """
     Get authenticated gspread client.
-    Uses service account locally, default credentials in Cloud Run.
+    
+    Local development: Uses application default credentials from:
+        gcloud auth application-default login
+    
+    Cloud Run: Uses the service's default credentials automatically.
     """
     global _client
     
@@ -36,25 +37,17 @@ def get_sheets_client() -> gspread.Client:
         'https://www.googleapis.com/auth/drive'
     ]
     
+    # Use google.auth.default() for both local and cloud
+    # - Local: picks up credentials from `gcloud auth application-default login`
+    # - Cloud Run: picks up service account credentials automatically
+    import google.auth
+    creds, project = google.auth.default(scopes=scopes)
+    _client = gspread.authorize(creds)
+    
     if is_cloud_environment():
-        # Use default credentials in Cloud Run
-        from google.auth import default
-        creds, _ = default(scopes=scopes)
-        _client = gspread.authorize(creds)
-        logger.debug("Google Sheets: using default credentials")
+        logger.debug("Google Sheets: using Cloud Run default credentials")
     else:
-        # Use service account locally
-        import os
-        creds_file = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
-        if creds_file and os.path.exists(creds_file):
-            _client = gspread.service_account(filename=creds_file, scopes=scopes)
-            logger.debug(f"Google Sheets: using service account from {creds_file}")
-        else:
-            # Try application default credentials
-            from google.auth import default
-            creds, _ = default(scopes=scopes)
-            _client = gspread.authorize(creds)
-            logger.debug("Google Sheets: using application default credentials")
+        logger.debug("Google Sheets: using application default credentials")
     
     return _client
 
@@ -65,7 +58,8 @@ def get_or_create_spreadsheet(name: str, share_with: str = None) -> Spreadsheet:
     
     Args:
         name: Spreadsheet name
-        share_with: Email to share with (optional)
+        share_with: Email(s) to share with (comma-separated string or list)
+                   Note: Cannot share with the same account you're authenticated as
     
     Returns:
         Spreadsheet object
@@ -77,13 +71,41 @@ def get_or_create_spreadsheet(name: str, share_with: str = None) -> Spreadsheet:
         logger.debug(f"Opened existing spreadsheet: {name}")
     except gspread.SpreadsheetNotFound:
         spreadsheet = client.create(name)
+        logger.info(f"Created spreadsheet: {name}")
+        
+        # Share with specified email(s)
         if share_with:
-            spreadsheet.share(share_with, perm_type='user', role='writer')
-            logger.info(f"Created and shared spreadsheet '{name}' with {share_with}")
-        else:
-            logger.info(f"Created spreadsheet: {name}")
+            _share_spreadsheet(spreadsheet, share_with)
     
     return spreadsheet
+
+
+def _share_spreadsheet(spreadsheet: Spreadsheet, share_with: str) -> None:
+    """
+    Share spreadsheet with specified email(s).
+    Handles errors gracefully (e.g., can't share with yourself).
+    
+    Args:
+        spreadsheet: Spreadsheet to share
+        share_with: Email(s) - comma-separated string or list
+    """
+    # Parse recipients
+    if isinstance(share_with, list):
+        emails = share_with
+    else:
+        emails = [e.strip() for e in share_with.split(',') if e.strip()]
+    
+    for email in emails:
+        try:
+            spreadsheet.share(email, perm_type='user', role='writer')
+            logger.info(f"Shared spreadsheet with {email}")
+        except Exception as e:
+            # Common errors:
+            # - Sharing with yourself (already owner)
+            # - Invalid email format
+            # - User doesn't exist
+            logger.debug(f"Could not share with {email}: {e}")
+            # Don't fail - sharing is optional
 
 
 def get_or_create_worksheet(spreadsheet: Spreadsheet, name: str, rows: int = 1000, cols: int = 26) -> Worksheet:
@@ -182,7 +204,8 @@ def save_report_to_sheet(
         items: List of items to save
         headers: Column headers
         row_formatter: Function to convert item to row list
-        share_with: Email to share with
+        share_with: Email(s) to share with (optional, comma-separated or list)
+                   Note: Sharing errors are handled gracefully
     
     Returns:
         True if successful
@@ -194,7 +217,7 @@ def save_report_to_sheet(
             items=["user1", "user2"],
             headers=["Date", "Username"],
             row_formatter=lambda u: [date, u],
-            share_with="laci@stagelync.com"
+            share_with="team@stagelync.com"  # Optional
         )
     """
     try:
@@ -222,9 +245,16 @@ def save_report_to_sheet(
 
 
 def test_sheets() -> bool:
+    """
+    Test Google Sheets connectivity.
+    
+    Returns:
+        True if test successful
+    """
     try:
         client = get_sheets_client()
-        client.list_spreadsheet_files()  # Removed: limit=1
+        # Try to list spreadsheets (minimal operation to verify auth works)
+        client.list_spreadsheet_files()
         logger.info("Google Sheets connection test: SUCCESS")
         return True
     except Exception as e:

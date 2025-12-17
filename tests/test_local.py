@@ -57,13 +57,13 @@ def test_config() -> bool:
         ("GCP Project ID", config.gcp_project_id, "stagelync-daily-user-reports"),
         ("GCP Region", config.gcp_region, "asia-northeast1"),
         ("MySQL Host", config.mysql_host, None),
-        ("MySQL Port", config.mysql_port, 25060),
+        ("MySQL Port", config.mysql_port, 3306),
         ("MySQL User", config.mysql_user, None),
         ("MySQL Database", config.mysql_database, None),
         ("SMTP Host", config.smtp_host, "smtp.gmail.com"),
         ("SMTP Port", config.smtp_port, 587),
         ("SMTP User", config.smtp_user, None),
-        ("Email To", config.email_to, "bartosladi@gmail.com"),
+        ("Email To", config.email_to, "laci@stagelync.com"),
     ]
     
     for name, value, expected in tests:
@@ -216,21 +216,25 @@ def test_sheets(create: bool = False) -> bool:
         print_result("Authentication", success)
         if not success:
             all_passed = False
-            print(f"\n  {Colors.YELLOW}Tip: Run 'gcloud auth application-default login' to authenticate{Colors.RESET}")
+            print(f"\n  {Colors.YELLOW}Run this command to authenticate with required scopes:{Colors.RESET}")
+            print(f"\n  gcloud auth application-default login \\")
+            print(f"    --scopes='https://www.googleapis.com/auth/spreadsheets,https://www.googleapis.com/auth/drive,https://www.googleapis.com/auth/cloud-platform'")
+            print()
             return all_passed
     except Exception as e:
         print_result("Authentication", False, str(e))
-        print(f"\n  {Colors.YELLOW}Tip: Run 'gcloud auth application-default login' to authenticate{Colors.RESET}")
+        print(f"\n  {Colors.YELLOW}Run this command to authenticate with required scopes:{Colors.RESET}")
+        print(f"\n  gcloud auth application-default login \\")
+        print(f"    --scopes='https://www.googleapis.com/auth/spreadsheets,https://www.googleapis.com/auth/drive,https://www.googleapis.com/auth/cloud-platform'")
+        print()
         all_passed = False
         return all_passed
     
     # Test 3: Create test sheet (optional)
     if create and all_passed:
         try:
-            spreadsheet = sheets.get_or_create_spreadsheet(
-                "StageLync - Test Sheet",
-                share_with=config.email_to
-            )
+            # Don't pass share_with when running locally - you already own the sheet
+            spreadsheet = sheets.get_or_create_spreadsheet("StageLync - Test Sheet")
             worksheet = spreadsheet.sheet1
             sheets.ensure_headers(worksheet, ["Date", "Test", "Value"])
             sheets.append_row(worksheet, [yesterday(), "Local Test", "Success"])

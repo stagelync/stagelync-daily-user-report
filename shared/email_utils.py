@@ -8,15 +8,31 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email import encoders
-from typing import Optional
+from typing import Optional, Union, List
 from datetime import datetime
 
 from .config import config
 from .logging_config import logger
 
 
+def _parse_recipients(to: Union[str, List[str]]) -> List[str]:
+    """
+    Parse recipients from string or list.
+    
+    Args:
+        to: Single email, comma-separated string, or list of emails
+    
+    Returns:
+        List of email addresses
+    """
+    if isinstance(to, list):
+        return [email.strip() for email in to if email.strip()]
+    else:
+        return [email.strip() for email in to.split(',') if email.strip()]
+
+
 def send_email(
-    to: str,
+    to: Union[str, List[str]],
     subject: str,
     body: str,
     html_body: Optional[str] = None,
@@ -27,7 +43,7 @@ def send_email(
     Send an email via SMTP.
     
     Args:
-        to: Recipient email address
+        to: Recipient email(s) - string (comma-separated) or list
         subject: Email subject
         body: Plain text body
         html_body: Optional HTML body
@@ -38,16 +54,25 @@ def send_email(
         True if sent successfully, False otherwise
     
     Usage:
-        send_email(
-            to="laci@stagelync.com",
-            subject="Daily Report",
-            body="Here is your report..."
-        )
+        # Single recipient
+        send_email(to="laci@stagelync.com", subject="Report", body="...")
+        
+        # Multiple recipients (comma-separated)
+        send_email(to="laci@stagelync.com,team@stagelync.com", subject="Report", body="...")
+        
+        # Multiple recipients (list)
+        send_email(to=["laci@stagelync.com", "team@stagelync.com"], subject="Report", body="...")
     """
     try:
+        recipients = _parse_recipients(to)
+        
+        if not recipients:
+            logger.error("No valid recipients provided")
+            return False
+        
         msg = MIMEMultipart('alternative')
         msg['From'] = config.smtp_user
-        msg['To'] = to
+        msg['To'] = ', '.join(recipients)
         msg['Subject'] = subject
         
         # Attach plain text
@@ -68,11 +93,11 @@ def send_email(
             server.login(config.smtp_user, config.smtp_password)
             server.send_message(msg)
         
-        logger.info(f"Email sent to {to}: {subject}")
+        logger.info(f"Email sent to {', '.join(recipients)}: {subject}")
         return True
         
     except Exception as e:
-        logger.error(f"Failed to send email to {to}: {e}")
+        logger.error(f"Failed to send email: {e}")
         return False
 
 
@@ -96,7 +121,7 @@ def send_report_email(
     date: str,
     items: list,
     item_formatter: callable = None,
-    to: str = None
+    to: Union[str, List[str]] = None
 ) -> bool:
     """
     Send a standardized report email.
@@ -106,17 +131,25 @@ def send_report_email(
         date: Report date
         items: List of items to report
         item_formatter: Optional function to format each item
-        to: Recipient (defaults to config.email_to)
+        to: Recipient(s) - string, comma-separated, or list (defaults to config.email_to)
     
     Returns:
         True if sent successfully
     
     Usage:
+        # Single recipient
         send_report_email(
             report_name="New Users",
             date="2024-01-15",
-            items=["user1", "user2", "user3"],
-            item_formatter=lambda u: f"  • {u}"
+            items=["user1", "user2", "user3"]
+        )
+        
+        # Multiple recipients
+        send_report_email(
+            report_name="New Users",
+            date="2024-01-15",
+            items=["user1", "user2"],
+            to="laci@stagelync.com,team@stagelync.com"
         )
     """
     to = to or config.email_to

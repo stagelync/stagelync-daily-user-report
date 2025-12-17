@@ -14,6 +14,7 @@ import os
 import sys
 from datetime import datetime
 from flask import Flask, jsonify, request
+from urllib.parse import quote, quote_plus
 
 # Add shared module to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -110,9 +111,10 @@ def run_report() -> dict:
     try:
         # Step 1: Get data
         users = get_new_users()
+        user_urls = ["<'https://stagelync.com/profile/" + quote_plus(s) + "'> " + s for s in users]
         
         # Step 2: Send email
-        email_sent = send_report_email(users)
+        email_sent = send_report_email(user_urls)
         if not email_sent:
             logger.warning("Email sending failed")
         
